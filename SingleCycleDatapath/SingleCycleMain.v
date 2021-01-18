@@ -45,9 +45,20 @@ module SingleCycleMain(initialPCval, run);
   
   reg [4:0]readReg1, readReg2, writeReg;
   reg [31:0]writeData;
+
+  
+  wire [4:0] writeRegToRegFile;
+  wire [31:0] writeDataToRegFile;
+  
+  reg regWriteMUXSelect; // if it's 1 $ra (31) will be chosen
+  reg regWriteDataMUXSelect;  // if it's 1 we write PC + 4 in register file
+  
+  MUX_2to1_5bit writeRegMUX(writeReg, 5'b11111, regWriteMUXSelect, writeRegToRegFile);
+  MUX_2to1 writeDataRegMUX( writeData , nextPCval, regWriteDataMUXSelect, writeDataToRegFile );
+  
   wire [31:0]readData1, readData2;
   reg RegWrite;
-  RegisterFile regFile(readReg1, readReg2, writeReg, writeData, readData1, readData2, RegWrite);
+  RegisterFile regFile(readReg1, readReg2, writeRegToRegFile, writeDataToRegFile, readData1, readData2, RegWrite);
   
   
   reg [15:0]inputDataSEXT;
@@ -108,6 +119,8 @@ module SingleCycleMain(initialPCval, run);
     //instrReg = 32'b001001_10010_10011_00000_00000_000100;    //addi $s1, $s2 ,4;    
     constantFour = 32'h0000_0004;   //updated it was 'constantFout'
     counter = 0;
+	 regWriteMUXSelect=0;
+    regWriteDataMUXSelect=0;
   end
   
   always@(run)  //this will make it work like trace. to make the execution sequential & automatic use always(PC) 
@@ -194,16 +207,47 @@ module SingleCycleMain(initialPCval, run);
         
         
         
-        if(OpCode == 6'b000010 || OpCode == 6'b000011)    //If the instruction is 'J' type.
+        if(OpCode == 6'b000010)    //If the instruction is 'J'.
           begin
               target = instrReg[25:0];
               jumpTarget[27:2] = target;
               jumpTarget[1:0] = 2'b00;
               jumpTarget[31:28] = PC[31:28];
-              prevInstrWasJ = 1;                  
+              prevInstrWasJ = 1;   
+              regWriteDataMUXSelect= 0;
+				      regWriteMUXSelect= 0;
+				      RegWrite = 0;				  
           end
+			 
           
-        else if(OpCode == 6'b000000)     // If the instruction is  'R' type.
+        else if(OpCode == 6'b000000 && instrReg[5:0] == 6'b000000) //jr instruction
+		    begin
+				      jumpTarget = readData1;
+              prevInstrWasJ = 1;
+				      regWriteMUXSelect= 0;
+              regWriteDataMUXSelect= 0;
+				      RegWrite = 0;
+				      Branch = 0;
+              MemRead = 0;
+              MemtoReg = 0;
+              MemWrite = 0;
+              RegWrite = 0;
+              aluSrc = 0;
+			 end
+		  
+		  else if(OpCode == 6'b000011) //jal instruction
+		    begin
+				      target = instrReg[25:0];
+              jumpTarget[27:2] = target;
+              jumpTarget[1:0] = 2'b00;
+              jumpTarget[31:28] = PC[31:28];
+              prevInstrWasJ = 1;
+              regWriteDataMUXSelect= 1;
+              regWriteMUXSelect= 1;
+				      RegWrite = 1;
+			 end
+
+		  else if(OpCode == 6'b000000)     // If the instruction is  'R' type.
         begin
               
               ALUOp = 2'b10;   
@@ -214,6 +258,8 @@ module SingleCycleMain(initialPCval, run);
               aluSrc = 0;
               MemtoReg = 0;
               RegWrite = 1;
+				      regWriteMUXSelect= 0;
+              regWriteDataMUXSelect= 0;
               
      
         end   //'R' Type.
@@ -234,6 +280,8 @@ module SingleCycleMain(initialPCval, run);
                   aluSrc = 1;
                   MemtoReg = 1;
                   RegWrite = 1;
+						      regWriteMUXSelect= 0;
+                  regWriteDataMUXSelect= 0;
                   
               end
               
@@ -248,6 +296,8 @@ module SingleCycleMain(initialPCval, run);
                   aluSrc = 1;
                   MemtoReg = 1; //irrelevant
                   RegWrite = 0;
+						      regWriteMUXSelect= 0;
+                  regWriteDataMUXSelect= 0;
                   
               end
               
@@ -262,6 +312,8 @@ module SingleCycleMain(initialPCval, run);
                   aluSrc = 0; 
                   MemtoReg = 1; //irrelevant
                   RegWrite = 0; //irrelevant
+						      regWriteMUXSelect= 0;
+                  regWriteDataMUXSelect= 0;
 
               end
               
@@ -278,6 +330,8 @@ module SingleCycleMain(initialPCval, run);
                   MemWrite = 0;
                   
                   MemtoReg = 1;
+						      regWriteMUXSelect= 0;
+                  regWriteDataMUXSelect= 0;
                   
                   
                   
@@ -287,6 +341,8 @@ module SingleCycleMain(initialPCval, run);
               
               if(OpCode == 6'b001101)   //ori instruction
               begin
+				          regWriteMUXSelect= 0;
+                  regWriteDataMUXSelect= 0;
                   
                   //Control Signals
                   prevInstrWasJ = 0;
@@ -337,6 +393,8 @@ module SingleCycleMain(initialPCval, run);
                   prevInstrWasJ = 0; 
                   ALUOp = 2'b01;  //presently irrelevant
                   RegDst = 0;
+						      regWriteMUXSelect= 0;
+                  regWriteDataMUXSelect= 0;
                   
                   Branch = 0;
                   MemRead = 0;
